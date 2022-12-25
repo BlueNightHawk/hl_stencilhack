@@ -1013,13 +1013,13 @@ void ShutdownInput()
 #include "interface.h"
 void CL_UnloadParticleMan();
 
-
+void HL_ImGUI_Deinit();
 void DLLEXPORT HUD_Shutdown()
 {
 	//	RecClShutdown();
 
 	ShutdownInput();
-
+	HL_ImGUI_Deinit();
 
 	FileSystem_FreeFileSystem();
 	CL_UnloadParticleMan();

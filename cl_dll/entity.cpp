@@ -291,6 +291,8 @@ void Beams()
 }
 #endif
 
+void ClearStencilBuffer();
+
 /*
 =========================
 HUD_CreateEntities
@@ -310,6 +312,8 @@ void DLLEXPORT HUD_CreateEntities()
 	Game_AddObjects();
 
 	GetClientVoiceMgr()->CreateEntities();
+
+	ClearStencilBuffer();
 }
 
 

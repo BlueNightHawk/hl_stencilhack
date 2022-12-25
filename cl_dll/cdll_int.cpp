@@ -17,7 +17,7 @@
 //
 // this implementation handles the linking of the engine to the DLL
 //
-
+#include "PlatformHeaders.h"
 #include "hud.h"
 #include "cl_util.h"
 #include "netadr.h"
@@ -51,7 +51,10 @@ void InitInput();
 void EV_HookEvents();
 void IN_Commands();
 
-/*
+void R_StudioVidInit();
+
+void HL_ImGUI_Init();
+	/*
 ================================
 HUD_GetHullBounds
 
@@ -119,6 +122,8 @@ int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 
 	memcpy(&gEngfuncs, pEnginefuncs, sizeof(cl_enginefunc_t));
 
+	SetDllDirectory(((std::string) "./" + gEngfuncs.pfnGetGameDirectory() + "/cl_dlls").c_str());
+
 	EV_HookEvents();
 	CL_LoadParticleMan();
 
@@ -126,6 +131,8 @@ int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 	{
 		return 0;
 	}
+
+	HL_ImGUI_Init();
 
 	// get tracker interface, if any
 	return 1;
@@ -148,6 +155,8 @@ int DLLEXPORT HUD_VidInit()
 	gHUD.VidInit();
 
 	VGui_Startup();
+
+	R_StudioVidInit();
 
 	return 1;
 }
