@@ -127,15 +127,24 @@ void HL_ImGUI_Deinit()
 
 void HL_ImGUI_Draw()
 {
-	if (!window)
-	{
-		gEngfuncs.pfnClientCmd("quit");
-	}
-
 	SDL_GL_SwapWindow(window);
 }
 
 int HL_ImGUI_ProcessEvent(void* data, SDL_Event* event)
 {
+	switch (event->type)
+	{
+	case SDL_WINDOWEVENT:
+		switch (event->window.event)
+		{
+		case SDL_WINDOWEVENT_CLOSE: // exit game
+			gEngfuncs.pfnClientCmd("quit");
+			break;
+
+		default:
+			break;
+		}
+		break;
+	}
 	return 1;
 }

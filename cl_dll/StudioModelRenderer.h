@@ -272,4 +272,6 @@ public:
 	
 	Vector m_vecLightDir;
 	alight_t m_Light;
+
+	float m_flShadowZPos;
 };

@@ -21,6 +21,10 @@
 #include "StudioModelRenderer.h"
 #include "GameStudioModelRenderer.h"
 
+#include "pmtrace.h"
+#include "pm_defs.h"
+#include "event_api.h"
+
 extern cvar_t* tfc_newmodels;
 
 extern extra_player_info_t g_PlayerExtraInfo[MAX_PLAYERS_HUD + 1];
@@ -35,6 +39,8 @@ int m_nPlayerGaitSequences[MAX_PLAYERS];
 
 // Global engine <-> studio model rendering code interface
 engine_studio_api_t IEngineStudio;
+
+extern cvar_s* g_cvShadows;
 
 void (*GL_StudioDrawShadow)(void);
 
@@ -1793,6 +1799,25 @@ void CStudioModelRenderer::StudioRenderFinal_Hardware()
 		DrawShadowsForEnt();
 	}
 
+	if (r_shadows->value == 1.0f && (m_pCurrentEntity != gEngfuncs.GetViewModel()))
+	{
+		pmtrace_t tr;
+		gEngfuncs.pEventAPI->EV_SetUpPlayerPrediction(0, 1);
+
+		// Store off the old count
+		gEngfuncs.pEventAPI->EV_PushPMStates();
+
+		// Now add in all of the players.
+		gEngfuncs.pEventAPI->EV_SetSolidPlayers(gEngfuncs.GetLocalPlayer()->index - 1);
+
+		gEngfuncs.pEventAPI->EV_SetTraceHull(2);
+		gEngfuncs.pEventAPI->EV_PlayerTrace(m_pCurrentEntity->origin, m_pCurrentEntity->origin - Vector(0,0,8192), PM_STUDIO_BOX | PM_WORLD_ONLY, -1, &tr);
+
+		m_flShadowZPos = tr.endpos[2];
+
+		gEngfuncs.pEventAPI->EV_PopPMStates();
+	}
+
 	IEngineStudio.SetupRenderer(rendermode);
 
 	if (m_pCvarDrawEntities->value == 2)
@@ -2136,7 +2161,15 @@ void CStudioModelRenderer::DrawShadowsForEnt(void)
 
 		mstudiomodel_t* sm = (mstudiomodel_t*)((byte*)m_pStudioHeader + bp[i].modelindex) + index;
 		DrawShadowVolume(m_pCurretExtraData->submodels[index + baseindex], sm, false);
-		DrawShadowVolume(m_pCurretExtraData->submodels[index + baseindex], sm, true);
+
+		if (g_cvShadows->value == 1)
+		{
+			DrawShadowVolume(m_pCurretExtraData->submodels[index + baseindex], sm, true);
+		}
+		else
+		{
+			m_ShadowDir = g_vecZero;
+		}
 		baseindex += bp[i].nummodels;
 	}
 
@@ -2538,9 +2571,9 @@ void CStudioModelRenderer::StudioDrawPointsShadow()
 			for (; i > 0; i--, ptricmds += 4)
 			{
 				av = verts[ptricmds[0]];
-				point[0] = av[0] - (vec_x * (av[2] - m_pCurrentEntity->origin[2]));
-				point[1] = av[1] - (vec_y * (av[2] - m_pCurrentEntity->origin[2]));
-				point[2] = m_pCurrentEntity->origin[2] + height + 0.15f;
+				point[0] = av[0] - (vec_x * (av[2] - m_flShadowZPos));
+				point[1] = av[1] - (vec_y * (av[2] - m_flShadowZPos));
+				point[2] = m_flShadowZPos + height + 0.15f;
 
 				glVertex3fv(point);
 			}
