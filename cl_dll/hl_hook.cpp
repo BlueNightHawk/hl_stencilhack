@@ -105,8 +105,8 @@ void HL_ImGUI_Init()
 	SDL_HideWindow(firstwindow);
 
 	// Fix low fps on initial launch...
-	if ((window_flags & SDL_WINDOW_FULLSCREEN) == 0)
-		SDL_MinimizeWindow(window);
+	SDL_MinimizeWindow(window);
+	SDL_RestoreWindow(window);
 
 	glDisable(GL_STENCIL_TEST);
 	glStencilMask((GLuint)~0);
