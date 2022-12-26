@@ -235,21 +235,21 @@ private:
 	ExtraDataMap m_ExtraData;
 	ModelExtraData* m_pCurretExtraData;
 
-	Vector m_ShadowDir;
-
 	void SetupModelExtraData(void);
 	void BuildFaces(SubModelData& dst, mstudiomodel_t* src);
 	void BuildEdges(SubModelData& dst, mstudiomodel_t* src);
 	void AddEdge(SubModelData& dst, int face, int v0, int v1);
 
 	void DrawShadowsForEnt(void);
-	void DrawShadowVolume(SubModelData& data, mstudiomodel_t* model);
+	void DrawShadowVolume(SubModelData& data, mstudiomodel_t* model, bool dynlight);
 
 	cvar_t* sv_skyvec_x;
 	cvar_t* sv_skyvec_y;
 	cvar_t* sv_skyvec_z;
 
 public:
+	Vector m_ShadowDir;
+
 	void GetShadowVector(Vector& vecOut);
 	// Shadow data writing functions.
 	void StudioWriteData();
@@ -259,4 +259,17 @@ public:
 	bool m_bCacheShadowData;
 
 	std::vector<std::string> m_CachedInfos;
+
+public:
+	cvar_t *r_shadows, *r_shadow_height, *r_shadow_y, *r_shadow_x;
+
+	Vector verts[MAXSTUDIOVERTS];
+	void StudioGetVerts();
+	void GL_StudioDrawShadow();
+	void StudioSetupModel(int bodypart, void** ppbodypart, void** ppsubmodel);
+
+	void StudioDrawPointsShadow();
+	
+	Vector m_vecLightDir;
+	alight_t m_Light;
 };

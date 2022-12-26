@@ -36,6 +36,19 @@ int m_nPlayerGaitSequences[MAX_PLAYERS];
 // Global engine <-> studio model rendering code interface
 engine_studio_api_t IEngineStudio;
 
+void (*GL_StudioDrawShadow)(void);
+
+__declspec(naked) void ShadowHack(void)
+{
+	_asm
+	{
+        push ebp;
+        mov ebp, esp;
+        push ecx;
+        jmp[GL_StudioDrawShadow];
+	}
+}
+
 // buz start
 
 int g_shadowpolycounter;
@@ -138,6 +151,11 @@ void CStudioModelRenderer::Init()
 	sv_skyvec_x = gEngfuncs.pfnGetCvarPointer("sv_skyvec_x");
 	sv_skyvec_y = gEngfuncs.pfnGetCvarPointer("sv_skyvec_y");
 	sv_skyvec_z = gEngfuncs.pfnGetCvarPointer("sv_skyvec_z");
+
+	r_shadows = CVAR_CREATE("r_shadows", "0", FCVAR_ARCHIVE); // magic nipples - shadows
+	r_shadow_height = CVAR_CREATE("r_shadow_height", "0", FCVAR_ARCHIVE);
+	r_shadow_x = CVAR_CREATE("r_shadow_x", "0.75", FCVAR_ARCHIVE);
+	r_shadow_y = CVAR_CREATE("r_shadow_y", "0", FCVAR_ARCHIVE);
 }
 
 /*
@@ -1195,7 +1213,6 @@ bool CStudioModelRenderer::StudioDrawModel(int flags)
 		m_bCacheShadowData = false;
 	}
 	alight_t lighting;
-	Vector dir;
 
 	m_pCurrentEntity = IEngineStudio.GetCurrentEntity();
 	IEngineStudio.GetTimes(&m_nFrameCount, &m_clTime, &m_clOldTime);
@@ -1279,7 +1296,7 @@ bool CStudioModelRenderer::StudioDrawModel(int flags)
 
 	if ((flags & STUDIO_RENDER) != 0)
 	{
-		lighting.plightvec = dir;
+		lighting.plightvec = m_vecLightDir;
 		IEngineStudio.StudioDynamicLight(m_pCurrentEntity, &lighting);
 
 		IEngineStudio.StudioEntityLight(&lighting);
@@ -1294,6 +1311,8 @@ bool CStudioModelRenderer::StudioDrawModel(int flags)
 
 
 		IEngineStudio.StudioSetRemapColors(m_nTopColor, m_nBottomColor);
+
+		memcpy(&m_Light, &lighting, sizeof(alight_t));
 
 		StudioRenderModel();
 	}
@@ -1583,7 +1602,8 @@ bool CStudioModelRenderer::StudioDrawPlayer(int flags, entity_state_t* pplayer)
 			m_pCurrentEntity->curstate.body = 1; // force helmet
 		}
 
-		lighting.plightvec = dir;
+		lighting.plightvec = m_vecLightDir;
+
 		IEngineStudio.StudioDynamicLight(m_pCurrentEntity, &lighting);
 
 		IEngineStudio.StudioEntityLight(&lighting);
@@ -1610,11 +1630,15 @@ bool CStudioModelRenderer::StudioDrawPlayer(int flags, entity_state_t* pplayer)
 
 		IEngineStudio.StudioSetRemapColors(m_nTopColor, m_nBottomColor);
 
+		memcpy(&m_Light, &lighting, sizeof(alight_t));
+
 		StudioRenderModel();
 		m_pPlayerInfo = NULL;
 
 		if (0 != pplayer->weaponmodel)
 		{
+			lighting.plightvec = m_vecLightDir;
+
 			cl_entity_t saveent = *m_pCurrentEntity;
 
 			model_t* pweaponmodel = IEngineStudio.GetModelByIndex(pplayer->weaponmodel);
@@ -1626,6 +1650,8 @@ bool CStudioModelRenderer::StudioDrawPlayer(int flags, entity_state_t* pplayer)
 			StudioMergeBones(pweaponmodel);
 
 			IEngineStudio.StudioSetupLighting(&lighting);
+
+			memcpy(&m_Light, &lighting, sizeof(alight_t));
 
 			StudioRenderModel();
 
@@ -1791,7 +1817,25 @@ void CStudioModelRenderer::StudioRenderFinal_Hardware()
 
 			IEngineStudio.GL_SetRenderMode(rendermode);
 			IEngineStudio.StudioDrawPoints();
-			IEngineStudio.GL_StudioDrawShadow();
+	//		IEngineStudio.GL_StudioDrawShadow();
+			if (r_shadows->value != 0.0f && (m_pCurrentEntity != gEngfuncs.GetViewModel()))
+			{
+				if (r_shadows->value == 2.0f)
+				{
+					::GL_StudioDrawShadow = (void (*)(void))(((unsigned int)IEngineStudio.GL_StudioDrawShadow) + 35);
+
+					glDepthMask(GL_TRUE);
+					glEnable(GL_STENCIL_TEST);
+					ShadowHack();
+					glDisable(GL_STENCIL_TEST);
+				}
+				else
+				{
+					StudioSetupModel(i, (void**)&m_pBodyPart, (void**)&m_pSubModel);
+					StudioGetVerts();
+					GL_StudioDrawShadow();
+				}
+			}
 		}
 	}
 
@@ -2091,13 +2135,17 @@ void CStudioModelRenderer::DrawShadowsForEnt(void)
 		index = index % bp[i].nummodels;
 
 		mstudiomodel_t* sm = (mstudiomodel_t*)((byte*)m_pStudioHeader + bp[i].modelindex) + index;
-		DrawShadowVolume(m_pCurretExtraData->submodels[index + baseindex], sm);
+		DrawShadowVolume(m_pCurretExtraData->submodels[index + baseindex], sm, false);
+		DrawShadowVolume(m_pCurretExtraData->submodels[index + baseindex], sm, true);
 		baseindex += bp[i].nummodels;
 	}
 
 	glDepthMask(GL_TRUE);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glDisable(GL_STENCIL_TEST);
+	glStencilMask((GLuint)~0);
+	glStencilFunc(GL_EQUAL, 0, ~0);
+	glStencilOp(GL_KEEP, GL_INCR, GL_INCR);
 }
 
 /*
@@ -2108,14 +2156,33 @@ DrawShadowVolume
 */
 
 bool facelight[MaxShadowFaceCount];
+#define SHADOW_LOD_NEAR 500.0f
 
-
-void CStudioModelRenderer::DrawShadowVolume(SubModelData& data, mstudiomodel_t* model)
+void CStudioModelRenderer::DrawShadowVolume(SubModelData& data, mstudiomodel_t* model, bool dynlight)
 {
 	if ((data.faces.size() == 0) || (data.faces.size() > MaxShadowFaceCount))
 		return;
 
-	GetShadowVector(m_ShadowDir);
+		// if player's flashlight is on, and this entity is around them, set shadow vector to follow player's forward
+	if (dynlight)
+	{
+		if (gEngfuncs.GetLocalPlayer()->curstate.effects & EF_DIMLIGHT && (gEngfuncs.GetLocalPlayer()->curstate.origin - m_pCurrentEntity->curstate.origin).Length2D() < SHADOW_LOD_NEAR)
+		{
+
+			Vector forward, right, up;
+			AngleVectors(gEngfuncs.GetLocalPlayer()->angles, forward, right, up);
+
+			Vector ShadowDirection = (gEngfuncs.GetLocalPlayer()->curstate.origin + forward * 50 + up * 36 + right * 10) - m_pCurrentEntity->curstate.origin;
+			m_ShadowDir = ShadowDirection.Normalize();
+		}
+		else
+		{
+			m_ShadowDir = g_vecZero;
+			return;
+		}
+	}
+	else
+		GetShadowVector(m_ShadowDir);
 
 	Vector d;
 	VectorScale(m_ShadowDir, 256, d);
@@ -2151,6 +2218,7 @@ void CStudioModelRenderer::DrawShadowVolume(SubModelData& data, mstudiomodel_t* 
 		facelight[i] = (DotProduct(norm, m_ShadowDir) >= 0);
 
 		// comment this 'if' block if you want to use z-pass method
+		/*
 		if (facelight[i])
 		{
 			inddata[0] = f->vertex0;
@@ -2162,6 +2230,7 @@ void CStudioModelRenderer::DrawShadowVolume(SubModelData& data, mstudiomodel_t* 
 			inddata += 6;
 			facecount += 2;
 		}
+		*/
 	}
 
 	std::vector<Edge>::iterator e;
@@ -2199,18 +2268,18 @@ void CStudioModelRenderer::DrawShadowVolume(SubModelData& data, mstudiomodel_t* 
 	// use this block for z-pass method
 
 	// draw front faces incrementing stencil values
-	/*	glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
-		glCullFace(GL_BACK);
-		glDrawElements(GL_TRIANGLES, facecount * 3, GL_UNSIGNED_SHORT, indexdata);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+	glCullFace(GL_BACK);
+	glDrawElements(GL_TRIANGLES, facecount * 3, GL_UNSIGNED_SHORT, indexdata);
 
-		// draw back faces decrementing stencil values
-		glStencilOp(GL_KEEP, GL_KEEP, GL_DECR);
-		glCullFace(GL_FRONT);
-		glDrawElements(GL_TRIANGLES, facecount * 3, GL_UNSIGNED_SHORT, indexdata);
-	*/
+	// draw back faces decrementing stencil values
+	glStencilOp(GL_KEEP, GL_KEEP, GL_DECR);
+	glCullFace(GL_FRONT);
+	glDrawElements(GL_TRIANGLES, facecount * 3, GL_UNSIGNED_SHORT, indexdata);
+
 
 	// use this block for z-fail method
-
+	/*
 	// draw back faces incrementing stencil values when z fails
 	glStencilOp(GL_KEEP, GL_INCR, GL_KEEP);
 	glCullFace(GL_FRONT);
@@ -2220,7 +2289,7 @@ void CStudioModelRenderer::DrawShadowVolume(SubModelData& data, mstudiomodel_t* 
 	glStencilOp(GL_KEEP, GL_DECR, GL_KEEP);
 	glCullFace(GL_BACK);
 	glDrawElements(GL_TRIANGLES, facecount * 3, GL_UNSIGNED_SHORT, indexdata);
-
+	*/
 
 	g_Lock.Unlock();
 
@@ -2383,4 +2452,162 @@ void CStudioModelRenderer::StudioWriteDataAll()
 		z++;
 		m_pRenderModel = IEngineStudio.GetModelByIndex(z);
 	}
+}
+
+/*
+===============
+GL_StudioDrawShadow
+
+g-cont: don't modify this code it's 100% matched with
+original GoldSrc code and used in some mods to enable
+studio shadows with some asm tricks
+===============
+*/
+void CStudioModelRenderer::GL_StudioDrawShadow()
+{
+	// magic nipples - shadows | changed r_shadows.value to -> to prevent error
+	if (r_shadows->value && m_pCurrentEntity->curstate.rendermode != kRenderTransAdd)
+	{
+		glDepthMask(GL_TRUE);
+
+		float color = 1.0 - (1.0f * 0.5);
+
+		glDisable(GL_TEXTURE_2D);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glEnable(GL_BLEND);
+		glColor4f(0.0f, 0.0f, 0.0f, 1.0f - color);
+
+		glDepthFunc(GL_LESS);
+		StudioDrawPointsShadow();
+		glDepthFunc(GL_LEQUAL);
+
+		glEnable(GL_TEXTURE_2D);
+		glDisable(GL_BLEND);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		glShadeModel(GL_SMOOTH);
+
+		//glDepthMask(GL_TRUE);
+	}
+}
+
+/*
+===============
+StudioDrawPointsShadow
+
+===============
+*/
+void CStudioModelRenderer::StudioDrawPointsShadow()
+{
+	float *av, height;
+	float vec_x, vec_y;
+	mstudiomesh_t* pmesh;
+	Vector point;
+	int i, k;
+
+	glEnable(GL_STENCIL_TEST);
+
+	// height = g_studio.lightspot[2] + 1.0f;
+	// vec_x = -g_studio.lightvec[0] * 8.0f;
+	// vec_y = -g_studio.lightvec[1] * 8.0f;
+
+	// magic nipples - no more shadows from lightsources because it looks bad
+	height = r_shadow_height->value;
+	vec_y = r_shadow_y->value;
+	vec_x = r_shadow_x->value;
+
+	for (k = 0; k < m_pSubModel->nummesh; k++)
+	{
+		short* ptricmds;
+
+		pmesh = (mstudiomesh_t*)((byte*)m_pStudioHeader + m_pSubModel->meshindex) + k;
+		ptricmds = (short*)((byte*)m_pStudioHeader + pmesh->triindex);
+
+		while (i = *(ptricmds++))
+		{
+			if (i < 0)
+			{
+				glBegin(GL_TRIANGLE_FAN);
+				i = -i;
+			}
+			else
+			{
+				glBegin(GL_TRIANGLE_STRIP);
+			}
+
+
+			for (; i > 0; i--, ptricmds += 4)
+			{
+				av = verts[ptricmds[0]];
+				point[0] = av[0] - (vec_x * (av[2] - m_pCurrentEntity->origin[2]));
+				point[1] = av[1] - (vec_y * (av[2] - m_pCurrentEntity->origin[2]));
+				point[2] = m_pCurrentEntity->origin[2] + height + 0.15f;
+
+				glVertex3fv(point);
+			}
+
+			glEnd();
+		}
+	}
+
+	glDisable(GL_STENCIL_TEST);
+	glStencilMask((GLuint)~0);
+	glStencilFunc(GL_EQUAL, 0, ~0);
+	glStencilOp(GL_KEEP, GL_INCR, GL_INCR);
+}
+
+void Matrix3x4_VectorTransform(const float (*in)[4], const float v[3], float out[3])
+{
+	out[0] = v[0] * in[0][0] + v[1] * in[0][1] + v[2] * in[0][2] + in[0][3];
+	out[1] = v[0] * in[1][0] + v[1] * in[1][1] + v[2] * in[1][2] + in[1][3];
+	out[2] = v[0] * in[2][0] + v[1] * in[2][1] + v[2] * in[2][2] + in[2][3];
+}
+	/*
+===============
+R_StudioDrawPoints
+
+===============
+*/
+void CStudioModelRenderer::StudioGetVerts()
+{
+	int i;
+	byte* pvertbone;
+	Vector* pstudioverts;
+
+	if (!m_pStudioHeader)
+		return;
+
+	// safety bounding the skinnum
+	pvertbone = ((byte*)m_pStudioHeader + m_pSubModel->vertinfoindex);
+	pstudioverts = (Vector*)((byte*)m_pStudioHeader + m_pSubModel->vertindex);
+
+	for (i = 0; i < m_pSubModel->numverts; i++)
+	{
+		Matrix3x4_VectorTransform((*m_pbonetransform)[pvertbone[i]], pstudioverts[i], verts[i]);
+	}
+}
+
+	/*
+===============
+pfnStudioSetupModel
+
+===============
+*/
+void CStudioModelRenderer::StudioSetupModel(int bodypart, void** ppbodypart, void** ppsubmodel)
+{
+	int index;
+
+	if (bodypart > m_pStudioHeader->numbodyparts)
+		bodypart = 0;
+
+	m_pBodyPart = (mstudiobodyparts_t*)((byte*)m_pStudioHeader + m_pStudioHeader->bodypartindex) + bodypart;
+
+	index = m_pCurrentEntity->curstate.body / m_pBodyPart->base;
+	index = index % m_pBodyPart->nummodels;
+
+	m_pSubModel = (mstudiomodel_t*)((byte*)m_pStudioHeader + m_pBodyPart->modelindex) + index;
+
+	if (ppbodypart)
+		*ppbodypart = m_pBodyPart;
+	if (ppsubmodel)
+		*ppsubmodel = m_pSubModel;
 }

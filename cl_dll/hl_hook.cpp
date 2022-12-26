@@ -104,9 +104,14 @@ void HL_ImGUI_Init()
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_HideWindow(firstwindow);
 
-	if ((window_flags & SDL_WINDOW_FULLSCREEN) == 0 || (window_flags & SDL_WINDOW_FULLSCREEN_DESKTOP) == 0)
-		// Fix low fps on initial launch...
+	// Fix low fps on initial launch...
+	if ((window_flags & SDL_WINDOW_FULLSCREEN) == 0)
 		SDL_MinimizeWindow(window);
+
+	glDisable(GL_STENCIL_TEST);
+	glStencilMask((GLuint)~0);
+	glStencilFunc(GL_EQUAL, 0, ~0);
+	glStencilOp(GL_KEEP, GL_INCR, GL_INCR);
 
 	SDL_AddEventWatch(HL_ImGUI_ProcessEvent, NULL);
 }

@@ -81,8 +81,8 @@ model_t* g_pworld;
 int g_visframe;
 int g_framecount;
 Vector g_lightvec;
-
-void RecursiveDrawWorld(mnode_t* node)
+Vector g_dynlightvec;
+void RecursiveDrawWorld(mnode_t* node, model_s* pmodel)
 {
 	if (node->contents == CONTENTS_SOLID)
 		return;
@@ -94,14 +94,14 @@ void RecursiveDrawWorld(mnode_t* node)
 		return; // faces already marked by engine
 
 	// recurse down the children, Order doesn't matter
-	RecursiveDrawWorld(node->children[0]);
-	RecursiveDrawWorld(node->children[1]);
+	RecursiveDrawWorld(node->children[0],pmodel);
+	RecursiveDrawWorld(node->children[1],pmodel);
 
 	// draw stuff
 	int c = node->numsurfaces;
 	if (c)
 	{
-		msurface_t* surf = g_pworld->surfaces + node->firstsurface;
+		msurface_t* surf = pmodel->surfaces + node->firstsurface;
 
 		for (; c; c--, surf++)
 		{
@@ -114,6 +114,7 @@ void RecursiveDrawWorld(mnode_t* node)
 			// cull from light vector
 
 			float dot;
+			float dotdyn;
 			mplane_t* plane = surf->plane;
 
 			switch (plane->type)
@@ -132,12 +133,37 @@ void RecursiveDrawWorld(mnode_t* node)
 				break;
 			}
 
-			if ((dot > 0) && (surf->flags & SURF_PLANEBACK))
-				continue;
+			if (g_dynlightvec != g_vecZero)
+			{
+				switch (plane->type)
+				{
+				case PLANE_X:
+					dotdyn = g_dynlightvec[0];
+					break;
+				case PLANE_Y:
+					dotdyn = g_dynlightvec[0];
+					break;
+				case PLANE_Z:
+					dotdyn = g_dynlightvec[0];
+					break;
+				default:
+					dotdyn = DotProduct(g_dynlightvec, plane->normal);
+					break;
+				}
+				if ((dot > 0) && (surf->flags & SURF_PLANEBACK) && (dotdyn > 0))
+					continue;
 
-			if ((dot < 0) && !(surf->flags & SURF_PLANEBACK))
-				continue;
+				if ((dot < 0) && !(surf->flags & SURF_PLANEBACK) && (dotdyn < 0))
+					continue;
+			}
+			else
+			{
+				if ((dot > 0) && (surf->flags & SURF_PLANEBACK))
+					continue;
 
+				if ((dot < 0) && !(surf->flags & SURF_PLANEBACK))
+					continue;
+			}
 			glpoly_t* p = surf->polys;
 			float* v = p->verts[0];
 
@@ -156,8 +182,8 @@ void RecursiveDrawWorld(mnode_t* node)
 
 PFNGLACTIVETEXTUREARBPROC glActiveTextureARB = NULL;
 
-
-/*
+model_s* GetModelByIndex(int i);
+	/*
 =================
 HUD_DrawNormalTriangles
 
@@ -211,8 +237,14 @@ void DLLEXPORT HUD_DrawNormalTriangles()
 		// get light vector
 		g_StudioRenderer.GetShadowVector(g_lightvec);
 
+		// get light vector
+		g_dynlightvec = g_StudioRenderer.m_ShadowDir;
+
 		// draw world
-		RecursiveDrawWorld(g_pworld->nodes);
+		RecursiveDrawWorld(g_pworld->nodes,g_pworld);
+
+		// draw world
+	//	RecursiveDrawWorld(g_pworld->nodes, g_pworld);
 
 		glPopAttrib();
 	}

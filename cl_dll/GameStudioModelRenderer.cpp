@@ -96,6 +96,11 @@ void R_StudioVidInit()
 }
 
 
+model_s* GetModelByIndex(int i)
+{
+	return IEngineStudio.GetModelByIndex(i);
+}
+
 // The simple drawing interface we'll pass back to the engine
 r_studio_interface_t studio =
 	{
