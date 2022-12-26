@@ -36,6 +36,8 @@
 #include "vgui_TeamFortressViewport.h"
 #include "filesystem_utils.h"
 
+#include "SDL2/SDL_opengl.h"
+
 cl_enginefunc_t gEngfuncs;
 CHud gHUD;
 TeamFortressViewport* gViewPort = NULL;
@@ -43,6 +45,10 @@ TeamFortressViewport* gViewPort = NULL;
 
 #include "particleman.h"
 IParticleMan* g_pParticleMan = nullptr;
+
+bool InitScreenGlow(void);
+bool VidInitScreenGlow();
+void RenderScreenGlow(void);
 
 void CL_LoadParticleMan();
 void CL_UnloadParticleMan();
@@ -54,6 +60,8 @@ void IN_Commands();
 void R_StudioVidInit();
 
 void HL_ImGUI_Init();
+
+extern bool bQueueRestart;
 	/*
 ================================
 HUD_GetHullBounds
@@ -133,6 +141,7 @@ int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 	}
 
 	HL_ImGUI_Init();
+	InitScreenGlow();
 
 	// get tracker interface, if any
 	return 1;
@@ -157,6 +166,8 @@ int DLLEXPORT HUD_VidInit()
 	VGui_Startup();
 
 	R_StudioVidInit();
+	
+	VidInitScreenGlow();
 
 	return 1;
 }
@@ -193,8 +204,12 @@ int DLLEXPORT HUD_Redraw(float time, int intermission)
 {
 	//	RecClHudRedraw(time, intermission);
 
-	gHUD.Redraw(time, 0 != intermission);
+	RenderScreenGlow();
 
+
+	glDepthRange(0.f, 0.f);
+	gHUD.Redraw(time, 0 != intermission);
+	glDepthRange(0.f, 1.f);
 	return 1;
 }
 
@@ -247,6 +262,9 @@ Called by engine every frame that client .dll is loaded
 void DLLEXPORT HUD_Frame(double time)
 {
 	//	RecClHudFrame(time);
+	if (bQueueRestart)
+		gEngfuncs.pfnClientCmd("_restart");
+
 
 	GetClientVoiceMgr()->Frame(time);
 }
