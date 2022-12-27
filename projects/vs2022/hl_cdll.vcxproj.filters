@@ -327,6 +327,9 @@
     <ClCompile Include="..\..\cl_dll\hl_hook.cpp">
       <Filter>Source Files\engine_hook</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\cl_dll\memory.cpp">
+      <Filter>Source Files\engine_hook</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\cl_dll\kbutton.h">

@@ -16,7 +16,7 @@
 #define NOGDICAPMASKS
 #define NOVIRTUALKEYCODES
 #define NOWINMESSAGES
-#define NOWINSTYLES
+//#define NOWINSTYLES
 #define NOSYSMETRICS
 #define NOMENUS
 #define NOICONS
@@ -45,7 +45,7 @@
 #define NOSOUND
 #define NOTEXTMETRIC
 #define NOWH
-#define NOWINOFFSETS
+//#define NOWINOFFSETS
 #define NOCOMM
 #define NOKANJI
 #define NOHELP

@@ -25,43 +25,36 @@ bool RegWrite(const char* valuename, int value);
 bool RegCreate(const char* subkey);
 
 bool bQueueRestart = false;
-bool bFullscreen = false;
-int iVidMode = 0;
+bool bFullScreen = false;
 
-float flFullscreenDelay = 0.0f;
+int iWidth = 0, iHeight = 0;
+
+void HL_ToggleFullScreen(SDL_Window* window, int mode);
+bool Windowed();
 
 // To draw imgui on top of Half-Life, we take a detour from certain engine's function into HL_ImGUI_Draw function
 void HL_ImGUI_Init()
 {
-	int iWindowed = RegRead("ScreenWindowed");
+	// window = SDL_GetWindowFromID(1);
+	firstwindow = SDL_GetWindowFromID(1);
+	iWidth = RegRead("ScreenWidth");
+	iHeight = RegRead("ScreenHeight");
+	RegCreate("SDL_FullScreen");
 	int iSDLFullscreen = RegRead("SDL_FullScreen");
-	iVidMode = RegRead("vid_level");
-	if (iVidMode == 0)
-	{
-		if (iWindowed == 1 && iSDLFullscreen == 0)
-		{
-			bFullscreen = false;
-		}
-		else if (iWindowed == 0)
-		{
-			RegCreate("SDL_FullScreen");
-			RegWrite("SDL_FullScreen", 1);
-			RegWrite("ScreenWindowed", 1);
 
-			bQueueRestart = true;
-			return;
-		}
-		else
-		{
-			if (RegRead("SDL_FullScreen") != 0)
-			{
-				flFullscreenDelay = gEngfuncs.GetAbsoluteTime() + 0.5f;
-				bFullscreen = true;
-			}
-			RegWrite("SDL_FullScreen", 0);
-		}
+	if (!Windowed())
+	{
+		RegWrite("ScreenWindowed", 1);
+		RegWrite("SDL_FullScreen", 1);
+		bQueueRestart = true;
+		return;
 	}
-	// One of the final steps before drawing a frame is calling SDL_GL_SwapWindow function
+	else if (iSDLFullscreen == 1)
+	{
+		RegWrite("ScreenWindowed", 100);
+		bFullScreen = true;
+	}
+		// One of the final steps before drawing a frame is calling SDL_GL_SwapWindow function
 	// It must be prevented, so imgui could be drawn before calling SDL_GL_SwapWindow
 
 	// This will hold the constant address of x86 CALL command, which looks like this
@@ -79,7 +72,7 @@ void HL_ImGUI_Init()
 		const int MEGABYTE = 1024 * 1024;
 		char* slice = new char[MEGABYTE];
 		ReadProcessMemory(GetCurrentProcess(), (const void*)origin, slice, MEGABYTE, NULL);
-		
+
 		unsigned char magic[] = {0x8B, 0x4D, 0x08, 0x83, 0xC4, 0x08, 0x89, 0x01, 0x5D, 0xC3, 0x90, 0x90, 0x90, 0x90, 0x90, 0xA1};
 
 		for (unsigned int i = 0; i < MEGABYTE - 16; i++)
@@ -127,20 +120,14 @@ void HL_ImGUI_Init()
 	// Notice the 1 byte offset from the origin
 	WriteProcessMemory(GetCurrentProcess(), (void*)(origin + 1), offsetBytes, 4, NULL);
 
-	//window = SDL_GetWindowFromID(1);
-	firstwindow = SDL_GetWindowFromID(1);
-	int iWidth = 0, iHeight = 0;
-	iWidth = RegRead("ScreenWidth");
-	iHeight = RegRead("ScreenHeight");
-
 	// Setup window
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8); 
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
-	
+
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_GetWindowFlags(firstwindow));
 
 	window = SDL_CreateWindow(SDL_GetWindowTitle(firstwindow), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, iWidth, iHeight, window_flags);
@@ -159,24 +146,40 @@ void HL_ImGUI_Init()
 	glStencilOp(GL_KEEP, GL_INCR, GL_INCR);
 
 	SDL_AddEventWatch(HL_ImGUI_ProcessEvent, NULL);
-}
+//	*firstwindow = *window;
 
+	if (bFullScreen)
+	{
+		HL_ToggleFullScreen(firstwindow, 1);
+		HL_ToggleFullScreen(window, 1);
+	}
+
+	//SDL_DestroyWindow(firstwindow);
+}
 void HL_ImGUI_Deinit()
 {
+	if (bFullScreen && RegRead("ScreenWindowed") == 1)
+	{
+		RegWrite("SDL_FullScreen", 0);
+		RegWrite("ScreenWindowed", 1);
+	}
+	else if (bFullScreen && RegRead("ScreenWindowed") == 0)
+	{
+		RegWrite("SDL_FullScreen", 0);
+		RegWrite("ScreenWindowed", 0);
+	}
+	else if (bFullScreen && RegRead("ScreenWindowed") == 100)
+	{
+		RegWrite("SDL_FullScreen", 0);
+		RegWrite("ScreenWindowed", 0);
+	}
+
+	
     SDL_GL_DeleteContext(gl_context);
 	SDL_DestroyWindow(window);
 	SDL_DestroyWindow(firstwindow);
 
 	SDL_DelEventWatch(HL_ImGUI_ProcessEvent, NULL);
-
-	if (RegRead("ScreenWindowed") == 0 && bFullscreen)
-	{
-		RegWrite("ScreenWindowed", 1);
-	}
-	else if (bFullscreen)
-	{
-		RegWrite("ScreenWindowed", 0);
-	}
 }
 
 void HL_ImGUI_Draw()
@@ -185,20 +188,8 @@ void HL_ImGUI_Draw()
 
 	if (!rawinput)
 		rawinput = gEngfuncs.pfnGetCvarPointer("m_rawinput");
-	 
-	if (bFullscreen && iVidMode == 0)
-	{
-		if (rawinput && rawinput->value < 1.0f)
-		{
-			gEngfuncs.Cvar_SetValue("m_rawinput", 1);
-		}
 
-		if (flFullscreenDelay != 0.0f && flFullscreenDelay < gEngfuncs.GetAbsoluteTime())
-		{
-			SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
-			flFullscreenDelay = 0.0f;
-		}
-	}
+	SDL_GL_SwapWindow(firstwindow);
 	SDL_GL_SwapWindow(window);
 }
 
@@ -333,3 +324,4 @@ bool RegCreate(const char*subkey)
 {
 	return CreateRegistryKey(HKEY_CURRENT_USER, ((std::string)("Software\\Valve\\Half-Life\\Settings\\") + subkey).c_str());
 }
+

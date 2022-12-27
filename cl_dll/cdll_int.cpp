@@ -119,6 +119,8 @@ void DLLEXPORT HUD_PlayerMove(struct playermove_s* ppmove, int server)
 	PM_Move(ppmove, server);
 }
 
+void PatchEngine(void);
+
 int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 {
 	gEngfuncs = *pEnginefuncs;
@@ -139,6 +141,8 @@ int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 	{
 		return 0;
 	}
+
+	PatchEngine();
 
 	HL_ImGUI_Init();
 	InitScreenGlow();

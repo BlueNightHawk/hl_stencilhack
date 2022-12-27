@@ -117,53 +117,50 @@ void RecursiveDrawWorld(mnode_t* node, model_s* pmodel)
 			float dotdyn;
 			mplane_t* plane = surf->plane;
 
-			switch (plane->type)
-			{
-			case PLANE_X:
-				dot = g_lightvec[0];
-				break;
-			case PLANE_Y:
-				dot = g_lightvec[1];
-				break;
-			case PLANE_Z:
-				dot = g_lightvec[2];
-				break;
-			default:
-				dot = DotProduct(g_lightvec, plane->normal);
-				break;
-			}
-
+			
 			if (g_dynlightvec != g_vecZero)
 			{
 				switch (plane->type)
 				{
 				case PLANE_X:
-					dotdyn = g_dynlightvec[0];
+					dot = g_dynlightvec[0];
 					break;
 				case PLANE_Y:
-					dotdyn = g_dynlightvec[0];
+					dot = g_dynlightvec[0];
 					break;
 				case PLANE_Z:
-					dotdyn = g_dynlightvec[0];
+					dot = g_dynlightvec[0];
 					break;
 				default:
-					dotdyn = DotProduct(g_dynlightvec, plane->normal);
+					dot = DotProduct(g_dynlightvec, plane->normal);
 					break;
 				}
-				if ((dot > 0) && (surf->flags & SURF_PLANEBACK) && (dotdyn > 0))
-					continue;
-
-				if ((dot < 0) && !(surf->flags & SURF_PLANEBACK) && (dotdyn < 0))
-					continue;
 			}
 			else
 			{
-				if ((dot > 0) && (surf->flags & SURF_PLANEBACK))
-					continue;
-
-				if ((dot < 0) && !(surf->flags & SURF_PLANEBACK))
-					continue;
+				switch (plane->type)
+				{
+				case PLANE_X:
+					dot = g_lightvec[0];
+					break;
+				case PLANE_Y:
+					dot = g_lightvec[1];
+					break;
+				case PLANE_Z:
+					dot = g_lightvec[2];
+					break;
+				default:
+					dot = DotProduct(g_lightvec, plane->normal);
+					break;
+				}
 			}
+
+			if ((dot > 0) && (surf->flags & SURF_PLANEBACK))
+				continue;
+
+			if ((dot < 0) && !(surf->flags & SURF_PLANEBACK))
+				continue;
+
 			glpoly_t* p = surf->polys;
 			float* v = p->verts[0];
 
@@ -393,10 +390,20 @@ Non-transparent triangles-- add them here
 */
 void DLLEXPORT HUD_DrawNormalTriangles()
 {
-	//	RecClDrawNormalTriangles();
-	ClearBuffer();
-
 	gHUD.m_Spectator.DrawOverview();
+}
+
+
+/*
+=================
+HUD_DrawTransparentTriangles
+
+Render any triangles with transparent rendermode needs here
+=================
+*/
+void DLLEXPORT HUD_DrawTransparentTriangles()
+{
+	ClearBuffer();
 
 	// buz start
 	// òóò ìîæíî áþëî ïðîñòî íàðèñîâàòü ñåðûé êâàäðàò íà âåñü ýêðàí, êàê ýòî ÷àñòî äåëàþò
@@ -449,35 +456,23 @@ void DLLEXPORT HUD_DrawNormalTriangles()
 		// get light vector
 		g_StudioRenderer.GetShadowVector(g_lightvec);
 
+		g_dynlightvec = g_vecZero;
+
+		// draw world
+		RecursiveDrawWorld(g_pworld->nodes, g_pworld);
+
 		// get light vector
 		g_dynlightvec = g_StudioRenderer.m_ShadowDir;
 
 		// draw world
-		RecursiveDrawWorld(g_pworld->nodes,g_pworld);
-
-		// draw world
-	//	RecursiveDrawWorld(g_pworld->nodes, g_pworld);
+		if (g_dynlightvec != g_vecZero)
+			RecursiveDrawWorld(g_pworld->nodes, g_pworld);
 
 		glPopAttrib();
 	}
 
 	g_bShadows = false;
 	// buz end
-}
-
-
-/*
-=================
-HUD_DrawTransparentTriangles
-
-Render any triangles with transparent rendermode needs here
-=================
-*/
-void DLLEXPORT HUD_DrawTransparentTriangles()
-{
-	//	RecClDrawTransparentTriangles();
-
-
 	if (g_pParticleMan)
 		g_pParticleMan->Update();
 }

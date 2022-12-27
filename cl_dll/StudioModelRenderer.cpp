@@ -2205,7 +2205,7 @@ void CStudioModelRenderer::DrawShadowVolume(SubModelData& data, mstudiomodel_t* 
 			Vector forward, right, up;
 			AngleVectors(gEngfuncs.GetLocalPlayer()->angles, forward, right, up);
 
-			Vector ShadowDirection = (gEngfuncs.GetLocalPlayer()->curstate.origin + forward * 50 + up * 36 + right * 10) - m_pCurrentEntity->curstate.origin;
+			Vector ShadowDirection = (gEngfuncs.GetLocalPlayer()->curstate.origin + up * 12 + right * 30) - m_pCurrentEntity->curstate.origin;
 			m_ShadowDir = ShadowDirection.Normalize();
 		}
 		else
