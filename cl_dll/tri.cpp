@@ -194,7 +194,7 @@ bool InitScreenGlow(void)
 	// register the CVARs
 	glow_blur_steps = gEngfuncs.pfnRegisterVariable("glow_blur_steps", "2", FCVAR_ARCHIVE);
 	glow_darken_steps = gEngfuncs.pfnRegisterVariable("glow_darken_steps", "3", FCVAR_ARCHIVE);
-	glow_strength = gEngfuncs.pfnRegisterVariable("glow_strength", "1", FCVAR_ARCHIVE);
+	glow_strength = gEngfuncs.pfnRegisterVariable("glow_strength", "0", FCVAR_ARCHIVE);
 
 	return true;
 }

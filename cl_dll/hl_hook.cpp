@@ -29,6 +29,8 @@ bool bFullScreen = false;
 
 int iWidth = 0, iHeight = 0;
 
+float flDelayRestore = 0.0f;
+
 void HL_ToggleFullScreen(SDL_Window* window, int mode);
 bool Windowed();
 
@@ -136,10 +138,6 @@ void HL_ImGUI_Init()
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_HideWindow(firstwindow);
 
-	// Fix low fps on initial launch...
-	SDL_MinimizeWindow(window);
-	SDL_RestoreWindow(window);
-
 	glDisable(GL_STENCIL_TEST);
 	glStencilMask((GLuint)~0);
 	glStencilFunc(GL_EQUAL, 0, ~0);
@@ -148,11 +146,9 @@ void HL_ImGUI_Init()
 	SDL_AddEventWatch(HL_ImGUI_ProcessEvent, NULL);
 //	*firstwindow = *window;
 
-	if (bFullScreen)
-	{
-		HL_ToggleFullScreen(firstwindow, 1);
-		HL_ToggleFullScreen(window, 1);
-	}
+	// Fix low fps on initial launch...
+	SDL_MinimizeWindow(window);
+	flDelayRestore = gEngfuncs.GetAbsoluteTime() + 0.5f;
 
 	//SDL_DestroyWindow(firstwindow);
 }
@@ -189,7 +185,19 @@ void HL_ImGUI_Draw()
 	if (!rawinput)
 		rawinput = gEngfuncs.pfnGetCvarPointer("m_rawinput");
 
-	SDL_GL_SwapWindow(firstwindow);
+	if (rawinput->value != 1.0f)
+		gEngfuncs.Cvar_SetValue("m_rawinput", 1);
+
+	if (flDelayRestore != 0.0f && flDelayRestore < gEngfuncs.GetAbsoluteTime())
+	{
+		SDL_RestoreWindow(window);
+		if (bFullScreen)
+		{
+			HL_ToggleFullScreen(window, 1);
+		}
+		flDelayRestore = 0.0f;
+	}
+
 	SDL_GL_SwapWindow(window);
 }
 
