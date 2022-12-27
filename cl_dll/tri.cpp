@@ -390,19 +390,6 @@ Non-transparent triangles-- add them here
 */
 void DLLEXPORT HUD_DrawNormalTriangles()
 {
-	gHUD.m_Spectator.DrawOverview();
-}
-
-
-/*
-=================
-HUD_DrawTransparentTriangles
-
-Render any triangles with transparent rendermode needs here
-=================
-*/
-void DLLEXPORT HUD_DrawTransparentTriangles()
-{
 	ClearBuffer();
 
 	// buz start
@@ -473,6 +460,20 @@ void DLLEXPORT HUD_DrawTransparentTriangles()
 
 	g_bShadows = false;
 	// buz end
+
+	gHUD.m_Spectator.DrawOverview();
+}
+
+
+/*
+=================
+HUD_DrawTransparentTriangles
+
+Render any triangles with transparent rendermode needs here
+=================
+*/
+void DLLEXPORT HUD_DrawTransparentTriangles()
+{
 	if (g_pParticleMan)
 		g_pParticleMan->Update();
 }
